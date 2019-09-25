@@ -1,29 +1,41 @@
-node('docker') {
-        stage('Dump Vars') {
-                sh('export')
+pipeline {
+  agent { label "docker" }
+
+  environment {
+    tag = VersionNumber (versionNumberString: '${BUILD_DATE_FORMATTED, "yyyyMMdd"}-${BUILD_ID}')
+    customImage = ''
+    repository = 'jhulibraries/jenkins-ssh-agent-python37'
+  }
+      
+  stages {
+    stage('Checkout') {
+      steps {
+        checkout scm
+      }
+    }
+    
+    stage('Build') {
+      steps {
+        script {
+          customImage = docker.build("${repository}:${tag}")
         }
-
-        stage('Checkout') {
-                checkout scm
+      }
+    }
+    
+    stage('Deploy') {
+      steps {
+        script {
+          docker.withRegistry('', 'dockerhub') {
+            customImage.push()
+            customImage.push("latest")
+          }
         }
-
-        stage('Build') {
-            try{
-                def docker_repo = "jhulibraries"
-                def image_name = "jenkins-ssh-agent-base"
-                def tag = VersionNumber (versionNumberString: '${BUILD_DATE_FORMATTED, "yyyyMMdd"}_${BUILD_ID}')
-
-                withDockerRegistry([ credentialsId: "dockerHubDerek", url: "" ]) {
-                        def customImage = docker.build("${docker_repo}/${image_name}:${tag}")
-
-                        customImage.push()
-                        customImage.push("latest")
-
-                }
-            } catch(err) {
-                // do nothing
-            } finally {
-                sh('docker system prune -a --force')
-            }
-        }
+      }
+    }
+  }
+  post {
+    always {
+      sh('docker system prune -a --force')
+    }
+  }
 }
